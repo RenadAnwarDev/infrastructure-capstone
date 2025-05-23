@@ -1,246 +1,362 @@
-# SDA-CAPSTONE : Blog Page Application (Django) deployed on AWS Application Load Balancer with Auto Scaling, S3, Relational Database Service(RDS), VPC's Components
+# 🚀 SDA Capstone Project – Django Blog App on AWS
 
-## Description
+🎥 **Live Demo (Video):**
+[![Watch the Demo](https://img.shields.io/badge/Demo-Video-blue?style=for-the-badge&logo=youtube)](https://drive.google.com/file/d/1i_xnwaK8zpymiDANDBJ9X7LsIB0Dx_lR/view?usp=sharing)
 
-The Clarusway Blog Page Application aims to deploy blog application as a web application written Django Framework on AWS Cloud Infrastructure. This infrastructure has Application Load Balancer with Auto Scaling Group of Elastic Compute Cloud (EC2) Instances and Relational Database Service (RDS) on defined VPC. RDS gets the password and username via SSM parameters. User is able to upload pictures and videos on own blog page and these are kept on S3 Bucket. After deploying the application, we will monitor our nodes with Prometheus and Graphana. This architecture will be created by Firms DevOps Guy.
+## 🌍 Project Overview
 
-## Problem Statement
+This project demonstrates the deployment of a scalable Django-based blog application on the AWS cloud using production-level architecture. It utilizes:
 
-![Project_004](capstone.png)
+- ✅ EC2 (Auto Scaling Group)
+- ✅ Application Load Balancer (ALB)
+- ✅ Amazon RDS (MySQL)
+- ✅ Amazon S3 (for media storage)
+- ✅ AWS VPC with public/private subnets
+- ✅ IAM, NAT Gateway, Route Tables, SSM Parameters
+- ✅ Infrastructure as Code via Terraform
+- ✅ Monitoring with Prometheus & Grafana
 
-- Your company has recently ended up a project that aims to serve as Blog web application on isolated VPC environment. You and your colleagues have started to work on the project. Your Developer team has developed the application and you are going to deploy the app in production environment.
+---
 
-- Application is coded by Clarusway Fullstack development team and given you as DevOps team. App allows users to write their own blog page to whom user registration data should be kept in separate MySQL database in AWS RDS service and pictures or videos should be kept in S3 bucket. The object list of S3 Bucket containing movies and videos is recorded on DynamoDB table. 
+## 🛠️ Step-by-Step Deployment Guide
 
-- Application will be prepared using IAC tool. First deploy the app simply in a test enviroment to understand how it works.
+### 🧱 Step 1: VPC and Networking Setup
 
-- The web application will be deployed using Django framework.
+🔧 Created a custom VPC `sda-capstone-vpc` with CIDR block `10.90.0.0/16`  
+🔗 Enabled **DNS hostnames** to allow communication between instances  
+🌐 Created 2 Public & 2 Private Subnets across `eu-north-1a` and `eu-north-1b`
 
-- The Web Application should be accessible via web browser from anywhere.
+#### Subnets:
 
-- You are requested to push your program to the project repository on the Github. You are going to pull it into the webservers in the production environment on AWS Cloud. 
+- Public: `10.90.10.0/24`, `10.90.20.0/24`
+### 🌐 Enabling Auto-Assign Public IP for Public Subnet
 
-In the architecture, you can configure your infrastructure using the followings,
+<p align="center">
+  <img src="images/subnet-auto-assign-ip.png" alt="Enable Auto-Assign IP Setting on Public Subnet" width="800"/>
+</p>
 
-  - The application stack should be created with new AWS resources.
+> ✅ This screenshot shows how we enabled the *Auto-assign Public IPv4 address* for our public subnet (`sda-capstone-public-subnet-1a`).  
+> This is a critical step to ensure EC2 instances launched in this subnet receive public IPs automatically.
 
-  - Specifications of VPC:
+- Private: `10.90.11.0/24`, `10.90.21.0/24`
 
-    - VPC has two AZs and every AZ has 1 public and 1 private subnets.
+### 🌐 VPC Subnets Structure
 
-    - VPC has Internet Gateway
+<p align="center">
+  <img src="images/vpc-subnets-list.png" alt="VPC Subnets View in AWS Console" width="850"/>
+</p>
 
-    - One of public subnets has NAT Gateway.
+> ✅ This screenshot shows the public and private subnets created in two Availability Zones under `sda-capstone-vpc`.  
+> Each subnet was configured with specific CIDR blocks to support scalability and isolation.
 
-    - You might create new instance as Bastion host on Public subnet or you can use NAT Gateway.
 
-    - There should be managed private and public route tables.
+✅ Auto-assign public IP enabled for public subnets  
+✅ Internet Gateway created & attached  
 
-    - Route tables should be arranged regarding of routing policies and subnet associations based on public and private subnets.
+### 🌐 Internet Gateway Attached to VPC
 
-  - You should create Application Load Balancer with Auto Scaling Group of Ubuntu 22.04 EC2 Instances within created VPC.
+<p align="center">
+  <img src="images/internet-gateway-attached.png" alt="Internet Gateway Attached to VPC" width="850"/>
+</p>
 
-  - You should create RDS instance within one of private subnets on created VPC and configure it on application.
+> ✅ Internet Gateway `sda-capstone-igw` successfully created and attached to our custom VPC (`sda-capstone-vpc`).  
+> This allows instances in public subnets to access the internet.
 
-  - The Auto Scaling Group should use a Launch Template in order to launch instances needed and should be configured to;
+✅ Route Tables created:
+- Public RT connected to IGW (0.0.0.0/0)
+- Private RT created separately for private subnets
 
-    - use all Availability Zones on created VPC.
+---
 
-    - set desired capacity of instances to  ` 2`
+### 🔐 Step 2: Security Groups
 
-    - set minimum size of instances to  ` 2`
+- **ALB SG** – Allows HTTP (80) & HTTPS (443) from anywhere  
+- **EC2 SG** – Allows traffic only from ALB SG on 80/443 + SSH from anywhere  
+- **RDS SG** – Accepts MySQL (3306) traffic only from EC2 SG  
 
-    - set maximum size of instances to  ` 3`
+✅ All rules scoped within `sda-capstone-vpc`  
+✅ Security hardened by linking SGs instead of IPs
 
-    - set health check grace period to  ` 300 seconds`
+---
 
-    - set health check type to  ` ELB`
+### 🗂 Step 3: GitHub Repository Setup
 
-    - Scaling Policy --> Target Tracking Policy
+🔐 Created **private GitHub repo**: `capstone`  
+🔑 Generated personal access token with `repo` scope  
+📥 Cloned repo locally and pushed project files  
+🧠 Token stored securely in AWS SSM for later use in EC2 startup script
 
-      - Average CPU utilization (set Target Value ` %70`)
+Commands:
 
-      - seconds warm up before including in metric ---> `200`
+git clone https://<TOKEN>@github.com/<username>/capstone.git
+cd capstone
+git add .
+git commit -m "initial commit"
+git push
 
-  - ALB configuration;
-    
-    - Application Load Balancer should be placed within a security group which allows HTTP (80) and HTTPS (443) connections from anywhere. 
+🛡 Step 4: SSM Parameter Store
+Stored sensitive credentials securely in AWS SSM:
 
-    - Target Group
-      - Health Check Protocol is going to be HTTP
+/myname/capstone/username → admin
 
-    - Prepare Django environment on EC2 instance based on Developer Notes,
+/myname/capstone/password → Clarusway1234
 
-    - Download the "clarusway_aws_capstone" folder from Github repository,
+/myname/capstone/token → <GitHub Token>
 
-    - Install the requirements using requirements.txt in 'clarusway_aws_capstone' folder
+➡️ These values will be retrieved in settings.py using boto3
 
-    - Deploy the Django application on port 80.
+### 💾 Step 5: RDS – MySQL Database
+Created a DB Subnet Group with both private subnets
 
-    - Launch Template only allows HTTP (80) and HTTPS (443) ports coming from ALB Security Group and SSH (22) connections from anywhere.
+Launched RDS MySQL 8.0 instance named sda-capstone-rds
 
-    - EC2 Instances type can be configured as `t3.micro`.
+Settings:
 
-    - Instance launched should be tagged `Clarusway AWS Capstone Project`
+Storage: 20GB (auto-scaling up to 40GB)
 
-    - Since Django App needs to talk with S3, S3 full access role must be attached EC2s. 
+Public Access: ❌
 
-  - For RDS Database Instance;
-  
-    - Instance type can be configured as `db.t4g.micro`
+SG: sda-capstone-rds-sg
 
-    - Database engine can be `MySQL` with version of `8.0.40`.
+Initial DB: clarusway
 
-    - RDS endpoint should be addressed within settings file of blog application that is explained developer notes.
+DB credentials pulled from SSM inside Django settings
 
-    - Please read carefully "Developer notes" to manage RDS sub settings.
+---
 
-    - !!!!! Database username and password will be retrieved from SSM Parameter You need to modify the "src/cblog/settings.py" according to SSM parameter. 
+### 🪣 Step 6: Create S3 Bucket
 
-  - Create SSM parameters in configuration below: 
+🧾 Created an S3 bucket named: `sdacapstone-<yourname>-blog`  
+📦 Purpose: store images and videos uploaded by users on the blog
 
-     - Create a parameter for `database master password`  :
-      `Name`         : /<yourname>/capstone/password              
-       `Type`         : SecureString   (So AWS encrypts sensitive data using KMS)
+- Region: Stockholm
+- ACL: Bucket Owner Preferred
+- ❗ Unchecked "Block all public access"
+- Objects will be stored via Django’s S3 storage backend
 
-      - Create parameter for `database username`  :
-      `Name`         : /<yourname>/capstone/username             
-       `Type`         : SecureString  (So AWS encrypts sensitive data using KMS)
+➡️ Linked later in `settings.py` via:
+--python
+AWS_STORAGE_BUCKET_NAME = 'sdacapstone-<yourname>-blog'
+AWS_S3_REGION_NAME = 'eu-north-1'
 
-      - Create parameter for `Github TOKEN`  : (use your own project Github TOKEN as value)
-      `Name`         : /<yourname>/capstone/token             
-       `Type`         : SecureString   (So AWS encrypts sensitive data using KMS)
+### 🌐 Step 7: Create NAT Gateway
+💡 Why? EC2s in private subnets need internet access for updates & GitHub clone
 
+Steps:
 
-  - As S3 Bucket
+Allocated new Elastic IP
 
-    - First S3 Bucket
+Created NAT Gateway in sda-capstone-public-subnet-1a
 
-      - It should be created within the Region that you created VPC
+Updated Private Route Table with:
 
-      - Since development team doesn't prefer to expose traffic between S3 and EC2s on internet, Endpoint should be set on created VPC. 
+Destination: 0.0.0.0/0
+Target: NAT Gateway
+✅ Now private EC2 instances can access the internet securely 🚀
 
-      - S3 Bucket name should be addressed within configuration file of blog application that is explained developer notes.
-    
-    - Second S3 Bucket 
-      
-      - This Bucket is going to be used for failover scenario. It has just a basic static website that has a picture said "the page is under construction"
-    
-    - Retrieving Database username and password via SSM Parameter Store (Note: you need to modify the "src/cblog/settings.py" according to SSM parameter.) 
+### ⚙️ Step 8: Update settings.py Configuration
+To secure sensitive data, we dynamically pull credentials from SSM using boto3:
 
-    - First create the application on AWS console.
+def get_ssm_parameters():
+    ssm = boto3.client('ssm', region_name='eu-north-1')
+    username = ssm.get_parameter(Name="/<yourname>/capstone/username", WithDecryption=False)['Parameter']['Value']
+    password = ssm.get_parameter(Name="/<yourname>/capstone/password", WithDecryption=False)['Parameter']['Value']
+    return username, password
 
-## Project Skeleton 
+✅ Also updated S3 settings, database host (from RDS), and secret key
+✅ Pushed the changes to GitHub
 
-```text
-clarusway_blog_proj (folder)
-|
-|----Readme.md               # Given to the students (Definition of the project)
-|----src (folder)            # Given to the students (Django Application's )
-|----requirements.txt        # Given to the students (txt file)
-|----developer_notes.txt     # Given to the students (txt file)
-```
+### 🧪 Step 9: Test UserData Script on EC2
+🎯 Created a temporary EC2 instance (Ubuntu 22.04) in public subnet
+🔐 Attached IAM Role: sda-capstone-ec2-ssm-s3-full-access
 
-## Expected Outcome
+✅ Ran and verified UserData script:
+TOKEN=$(aws ssm get-parameter --name /<yourname>/capstone/token --with-decryption --query 'Parameter.Value' --output text)
+git clone https://$TOKEN@github.com/<your-repo-name>/capstone.git
+cd capstone/src
+python3 manage.py migrate
+python3 manage.py runserver 0.0.0.0:80
 
-![Phonebook App Search Page](./outcome.png)
+📸 Verified app at http://<Public-DNS>
+✅ If success, test server terminated to avoid extra billing
 
-### At the end of the project, following topics are to be covered;
+### 🛡️ Step 10: Launch Admin Node (Monitoring + JumpBox)
+🖥️ Created an EC2 instance: SDA-Admin-Node
 
-- Bash scripting
+OS: Amazon Linux 2023
 
-- AWS EC2 Launch Template Configuration
+Subnet: public
 
-- AWS VPC Configuration
-  - VPC
-  - Private and Public Subnets
-  - Private and Public Route Tables
-  - Managing routes
-  - Subnet Associations
-  - Internet Gateway
-  - NAT Gateway
+IAM Role: same as above
 
-- AWS EC2 Application Load Balancer Configuration
+Installed:
 
-- AWS EC2 ALB Target Group Configuration
+Terraform
 
-- AWS EC2 ALB Listener Configuration
+Ansible
 
-- AWS EC2 Auto Scaling Group Configuration
+Prometheus
 
-- AWS Relational Database Service Configuration
+Grafana
 
-- AWS EC2, RDS, ALB Security Groups Configuration
+Ports Open: 22, 3000, 9090, 9100
 
-- IAM Roles configuration
+✅ hostnamectl set-hostname SDA-Admin-Node
+### 🖥️ EC2 Instances Dashboard (Admin + Web Servers)
 
-- S3 configuration
+<p align="center">
+  <img src="images/ec2-instances-dashboard.png" alt="EC2 Instances Running in AWS Console" width="850"/>
+</p>
 
-- Git & Github for Version Control System
+> ✅ This shows all EC2 instances running: the `SDA-Admin-Node` and two web servers deployed via Auto Scaling.  
+> Status checks are passing, confirming that the instances are healthy and accessible.
 
-### At the end of the project, students will be able to;
 
-- Construct VPC environment with whole components like public and private subnets, route tables and managing their routes, internet Gateway, NAT Gateway. 
+### 🧱 Step 11: Build Full Infrastructure with Terraform
+🎯 Created Terraform configuration with the following modules:
 
-- Apply web programming skills, importing packages within Python Django Framework
+main.tf, userdata.sh, variables.tf, sec-gr.tf, iam.tf, data.tf, outputs.tf
 
-- Configure connection to the `MySQL` database.
+ALB, Target Group, Launch Template, ASG, DB Subnet Group, RDS, S3
+Ran:
+terraform init
+terraform apply
 
-- Demonstrate bash scripting skills using `user data` section within launch template to install and setup Blog web application on EC2 Instance.
+📸 Verified full stack deployed on AWS
+🌐 App accessible via ALB DNS
+📝 Created blog posts successfully
 
-- Demonstrate their configuration skills of AWS VPC, Application Load Balancer, ALB Target Group, ALB Listener, Auto Scaling Group, S3, RDS.
+### 🌍 Deployed Django Blog App via ALB
 
-- Apply git commands (push, pull, commit, add etc.) and Github as Version Control System.
+<p align="center">
+  <img src="images/django-blog-homepage-alb.png" alt="Clarusway Blog App Running on ALB" width="850"/>
+</p>
 
-## Steps to Solution
+> ✅ The Django blog application is successfully deployed and accessible through the Application Load Balancer DNS.  
+> Interface loaded with login, register, and about pages.
 
-- Step 1: Create Dedicated VPC And Whole Components
 
-- Step 2: Create Security Groups (ALB ---> EC2 ---> RDS)
+### ⚙️ Step 12: Configure Ansible Dynamic Inventory
+📦 On SDA-Admin-Node:
 
-- Step 3: Prepare Your Github Repository
+Created inventory_aws_ec2.yml
 
-- Step 4: Creating Parameters in SSM Parameter Store 
+Added AWS region & EC2 filters by tags (Project: Capstone)
 
-- Step 5: Create RDS
+Configured ansible.cfg with PEM key
 
-- Step 6: Create S3 Bucket
+Test:
+ansible-inventory --graph
+✅ Able to discover EC2s dynamically using tags
 
-- Step 7: Create NAT Gateway in Public Subnet
+### 🔧 Step 13: Deploy Prometheus Node Exporter via Ansible
+🎯 Created Ansible playbook: prometheus_monitoring_setup.yaml
+<p align="center">
+  <img src="images/step-13-ansible-playbook-node-exporter.png" alt="Ansible Playbook Node Exporter Setup" width="850"/>
+</p>
+🛠 Installed Node Exporter on all EC2s automatically
 
-- Step 8: Update settings.py File and Push to Github Repo  
+ansible-playbook prometheus_monitoring_setup.yaml
+✅ Service enabled and running on port 9100
+### ✅ Node Exporter Running on EC2
 
-- Step 9: Prepare A Test Instance For Userdata
+<p align="center">
+  <img src="images/node-exporter-running.png" alt="Node Exporter Running on EC2 - Port 9100" width="850"/>
+</p>
 
-- Step 10: Create SDA-Admin-Node EC2 Instance (JumpBox/Ansible Control Node/Monitoring/Management)
+> 🟢 Node Exporter is successfully up and running, serving metrics on port `9100`.  
+> This confirms that our Ansible playbook has been executed correctly across all EC2 nodes.
 
-- Step 11: Create The Infrastructure With Terraform
 
-- Step 12: Configure Ansible on "admin-node"
+### 📡 Step 14: Prometheus Service Discovery
+Edited prometheus.yml to auto-discover EC2s using ec2_sd_configs:
 
-- Step 13: Write a Playbook to Configure Remote Nodes to Work With Prometheus
+- job_name: 'ec2-node-exporters'
+  ec2_sd_configs:
+    - region: eu-north-1
+      port: 9100
+      filters:
+        - name: tag:App
+          values: ["BlogPage"]
+Ran Prometheus:
+./prometheus --config.file=prometheus.yml
 
-- Step 14: Update prometheus.yaml File to Scrape Metrics From Nodes With Service Discovery
+<p align="center">
+  <img src="images/step-14-prometheus-targets.png" alt="Prometheus Service Discovery Targets" width="850"/>
+</p>
 
-- Step 15: Create Route 53 with Failover settings
+> This screenshot confirms that **Prometheus** is successfully scraping metrics from all running EC2 instances tagged for monitoring.  
+> Targets are dynamically discovered using `ec2_sd_configs` based on EC2 tags (`App: BlogPage`), which ensures high scalability for the monitoring system. 📊✅
 
-- Step 15: Visualizing Metrics With Graphana
+📸 Visited http://<Admin-IP>:9090/targets → EC2s detected! ✅
 
-## Notes
+### 📊 Step 15: Grafana Integration & Dashboard
+🎯 Opened http://<Admin-IP>:3000
+🔐 Logged in: admin / admin
 
-- RDS database should be located in private subnet. just EC2 machines that has ALB security group can talk with RDS.
+Steps:
 
-- RDS is located on private groups and only EC2s can talk with it on port 3306
+Connected Prometheus as data source
 
-- ALB is located public subnet
+Imported Dashboard ID 1860 (Node Exporter Full)
 
-- EC2's are located in private subnets and only ALB can talk with them
+Saw real-time metrics: CPU, RAM, disk, uptime, network...
 
+✅ Monitoring complete! 🚀
 
-## Resources
+### 📊 Grafana Monitoring Dashboard
 
-- [Python Django Framework](https://www.djangoproject.com/)
+<p align="center">
+  <img src="images/grafana-node-exporter-dashboard.png" alt="Grafana Node Exporter Dashboard" width="850"/>
+</p>
 
-- [Python Django Example](https://realpython.com/get-started-with-django-1/)
+> ✅ Real-time monitoring with Grafana using Node Exporter Full Dashboard (ID: 1860).  
+> Displays CPU, RAM, Disk, Network stats, and system load collected from EC2s.
 
-- [AWS CLI Command Reference](https://docs.aws.amazon.com/cli/latest/index.html)
+🧼 Clean-up Instructions
+To destroy infrastructure:
+
+cd sda-capstone-infra-tf
+terraform destroy --auto-approve
+Manually delete:
+
+RDS
+
+S3 Buckets (empty first)
+
+Subnet Groups
+
+IAM Roles
+
+IGW & NAT Gateway
+
+SSM Parameters
+
+VPC
+
+## 🚧 Challenges Faced
+Throughout the implementation of our capstone project, we encountered several challenges that required troubleshooting, collaboration, and adjustments. These included:
+
+❌ The initial AMI image was incompatible with our region, so we had to search for and configure a suitable one manually.
+
+🔐 Encountered several IAM permission errors that required time-consuming debugging and policy adjustments.
+
+🧱 Some Terraform modules were outdated or misconfigured, leading to deployment failures and resource rollbacks.
+
+🔑 Managing the SSH access for multiple teammates required careful coordination and key sharing.
+
+🛑 File permission issues on the EC2 instance caused problems during Ansible deployment.
+
+⚙️ Environment variables were not being picked up properly by the backend service initially, delaying testing.
+
+
+### 👑 Final Notes
+
+🎓 This project was built as a capstone for Clarusway DevOps Bootcamp
+
+🧑‍💻 Team 1
+📆 Year: 2025
+
+
+✅ All steps documented, executed, tested, and monitored successfully
+💪 Proudly completed with passion, precision, and practical proof!
